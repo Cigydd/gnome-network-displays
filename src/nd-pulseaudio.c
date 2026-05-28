@@ -220,10 +220,15 @@ on_pa_nd_sink_got_info (pa_context         *c,
 static void
 nd_pulseaudio_unload_module_cb (pa_context *c, int success, void *userdata)
 {
+  NdPulseaudio *self = ND_PULSEAUDIO (userdata);
+
   if (success)
     g_info ("NdPulseaudio: Module unloaded");
   else
     g_warning ("NdPulseaudio: Error unloading module");
+
+  /* Wake the thread blocked in pa_threaded_mainloop_wait() in nd_pulseaudio_unload(). */
+  pa_threaded_mainloop_signal (self->mainloop, 0);
 }
 
 void
@@ -231,22 +236,32 @@ nd_pulseaudio_unload (NdPulseaudio *self)
 {
   g_debug ("NdPulseaudio: Unloading module");
 
+  /* All access to the context/operations must hold the mainloop lock, and
+   * pa_threaded_mainloop_wait() in particular requires it. */
+  pa_threaded_mainloop_lock (self->mainloop);
+
   if (!PA_CONTEXT_IS_GOOD (pa_context_get_state (self->context)))
-    return;
+    {
+      pa_threaded_mainloop_unlock (self->mainloop);
+      return;
+    }
   while (pa_context_get_state (self->context) != PA_CONTEXT_READY)
     pa_threaded_mainloop_wait (self->mainloop);
   pa_operation *operation = pa_context_unload_module (self->context,
                                                       self->null_module_idx,
                                                       nd_pulseaudio_unload_module_cb,
-                                                      NULL);
+                                                      self);
   if (!operation)
     {
       g_warning ("NdPulseaudio: Error unloading module operation");
+      pa_threaded_mainloop_unlock (self->mainloop);
       return;
     }
   while (pa_operation_get_state (operation) == PA_OPERATION_RUNNING)
     pa_threaded_mainloop_wait (self->mainloop);
   pa_operation_unref (operation);
+
+  pa_threaded_mainloop_unlock (self->mainloop);
 }
 
 static void
@@ -292,6 +307,9 @@ nd_pulseaudio_state_cb (pa_context *context,
       /* FIXME: */
       break;
     }
+
+  /* Wake anyone blocked in pa_threaded_mainloop_wait() on a state change. */
+  pa_threaded_mainloop_signal (self->mainloop, 0);
 }
 
 static void
@@ -317,10 +335,14 @@ nd_pulseaudio_async_initable_init_async (GAsyncInitable     *initable,
   pa_proplist_sets (proplist, PA_PROP_APPLICATION_ID, app_id);
   /* pa_proplist_sets (proplist, PA_PROP_APPLICATION_ICON_NAME, ); */
 
-  self->context = pa_context_new_with_proplist (self->mainloop_api, NULL, proplist);
-
   /* Create our task; we currently don't handle cancellation internally */
   self->init_task = g_task_new (initable, cancellable, callback, user_data);
+
+  /* The mainloop thread is already running, so every context call below must
+   * hold the lock. The state callback won't fire until we unlock. */
+  pa_threaded_mainloop_lock (self->mainloop);
+
+  self->context = pa_context_new_with_proplist (self->mainloop_api, NULL, proplist);
 
   pa_context_set_state_callback (self->context,
                                  nd_pulseaudio_state_cb,
@@ -329,18 +351,22 @@ nd_pulseaudio_async_initable_init_async (GAsyncInitable     *initable,
   res = pa_context_connect (self->context, NULL, (pa_context_flags_t) PA_CONTEXT_NOFLAGS, NULL);
   if (res < 0)
     {
-      g_debug ("NdPulseaudio: Error querying sink info");
+      int err = pa_context_errno (self->context);
+      pa_threaded_mainloop_unlock (self->mainloop);
+      g_debug ("NdPulseaudio: Error connecting to PA");
       if (self->init_task)
         {
           g_task_return_new_error (self->init_task,
                                    G_IO_ERROR,
                                    G_IO_ERROR_FAILED,
                                    "Error connecting to PA: %s",
-                                   pa_strerror (pa_context_errno (self->context)));
+                                   pa_strerror (err));
         }
       g_clear_object (&self->init_task);
       return;
     }
+
+  pa_threaded_mainloop_unlock (self->mainloop);
 
   /* Wait for us to be connected. */
 }
@@ -377,6 +403,12 @@ nd_pulseaudio_finalize (GObject *object)
       g_clear_object (&self->init_task);
     }
 
+  /* Stop the mainloop thread first so it can no longer service the context or
+   * operation while we tear them down; otherwise the thread races this
+   * teardown and corrupts the heap. */
+  if (self->mainloop)
+    pa_threaded_mainloop_stop (self->mainloop);
+
   if (self->operation)
     pa_operation_cancel (self->operation);
   g_clear_pointer (&self->operation, pa_operation_unref);
@@ -384,7 +416,6 @@ nd_pulseaudio_finalize (GObject *object)
     pa_context_disconnect (self->context);
   g_clear_pointer (&self->context, pa_context_unref);
   self->mainloop_api = NULL;
-  pa_threaded_mainloop_stop (self->mainloop);
   g_clear_pointer (&self->mainloop, pa_threaded_mainloop_free);
   g_clear_pointer (&self->name, g_free);
   g_clear_pointer (&self->uuid, g_free);
