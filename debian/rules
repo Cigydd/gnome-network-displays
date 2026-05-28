@@ -1,0 +1,11 @@
+#!/usr/bin/make -f
+
+# This machine's interactive shell lives in a conda env whose pkg-config only
+# searches conda's lib dir, so meson would miss the system GTK/GStreamer/etc.
+# Force the system pkg-config for the whole build.
+export PKG_CONFIG = /usr/bin/pkg-config
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@

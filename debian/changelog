@@ -1,0 +1,18 @@
+gnome-network-displays (0.99.0.1) unstable; urgency=medium
+
+  * Fix the Wi-Fi Display VAAPI encoder path: drop the unavailable
+    vaapipostproc (vaapih264enc uploads frames itself) and probe for a
+    supported rate-control instead of hardcoding CBR, mirroring the earlier
+    Chromecast fix. Fixes "Error." when connecting to Miracast/WFD sinks on
+    CQP-only VA drivers.
+
+ -- Pavel Řezníček <cigydd@gmail.com>  Thu, 28 May 2026 13:36:39 +0200
+
+gnome-network-displays (0.99.0) unstable; urgency=medium
+
+  * Local build of upstream master with downstream fixes:
+    - Lower the libadwaita requirement to 1.5.0 so it builds on this distro.
+    - Probe for a supported VAAPI rate-control instead of hardcoding CBR.
+    - Lock the PulseAudio threaded mainloop and guard NULL pulse on teardown.
+
+ -- Pavel Řezníček <cigydd@gmail.com>  Thu, 28 May 2026 12:36:02 +0200
