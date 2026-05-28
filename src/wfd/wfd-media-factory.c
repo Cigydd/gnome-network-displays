@@ -117,6 +117,92 @@ free_qos_data (QOSData *qos_data)
   g_free (qos_data);
 }
 
+/* Some VA drivers implement only a subset of the H.264 rate-control modes
+ * (CQP-only is common). Setting an unsupported mode makes the encoder fail to
+ * create its VA config once the pipeline starts, which surfaces as a
+ * not-negotiated error and the sink going into ND_SINK_STATE_ERROR. Probe a
+ * throwaway pipeline to find a mode the driver actually accepts. */
+static gboolean
+wfd_media_factory_va_rate_control_works (const gchar *encoder_name,
+                                         gint         rate_control)
+{
+  GstElement *pipeline, *src, *convert, *encoder, *sink;
+  gboolean works = FALSE;
+
+  src = gst_element_factory_make ("videotestsrc", NULL);
+  convert = gst_element_factory_make ("videoconvert", NULL);
+  encoder = gst_element_factory_make (encoder_name, NULL);
+  sink = gst_element_factory_make ("fakesink", NULL);
+
+  if (src == NULL || convert == NULL || encoder == NULL || sink == NULL)
+    {
+      g_clear_object (&src);
+      g_clear_object (&convert);
+      g_clear_object (&encoder);
+      g_clear_object (&sink);
+      return FALSE;
+    }
+
+  g_object_set (src, "num-buffers", 1, NULL);
+  g_object_set (encoder, "rate-control", rate_control, NULL);
+
+  pipeline = gst_pipeline_new (NULL);
+  gst_bin_add_many (GST_BIN (pipeline), src, convert, encoder, sink, NULL);
+
+  if (gst_element_link_many (src, convert, encoder, sink, NULL) &&
+      gst_element_set_state (pipeline, GST_STATE_PAUSED) != GST_STATE_CHANGE_FAILURE)
+    {
+      GstStateChangeReturn ret = gst_element_get_state (pipeline, NULL, NULL, 3 * GST_SECOND);
+      works = (ret == GST_STATE_CHANGE_SUCCESS || ret == GST_STATE_CHANGE_NO_PREROLL);
+    }
+
+  gst_element_set_state (pipeline, GST_STATE_NULL);
+  gst_object_unref (pipeline);
+
+  return works;
+}
+
+/* Returns the preferred supported "rate-control" enum value for a VA-based
+ * H.264 encoder, preferring constant bitrate, or -1 to keep the element
+ * default if none could be probed. Resolved by enum nick so it works across
+ * the vaapi and va plugins, whose integer enum values differ. */
+static gint
+wfd_media_factory_pick_va_rate_control (const gchar *encoder_name)
+{
+  const gchar *preferred_nicks[] = { "cbr", "vbr", "cqp" };
+  g_autoptr(GstElement) probe = NULL;
+  GParamSpec *pspec;
+
+  probe = gst_element_factory_make (encoder_name, NULL);
+  if (probe == NULL)
+    return -1;
+
+  pspec = g_object_class_find_property (G_OBJECT_GET_CLASS (probe), "rate-control");
+  if (pspec == NULL || !G_IS_PARAM_SPEC_ENUM (pspec))
+    return -1;
+
+  for (guint i = 0; i < G_N_ELEMENTS (preferred_nicks); i++)
+    {
+      GEnumValue *value;
+
+      value = g_enum_get_value_by_nick (G_PARAM_SPEC_ENUM (pspec)->enum_class,
+                                        preferred_nicks[i]);
+      if (value == NULL)
+        continue;
+
+      if (wfd_media_factory_va_rate_control_works (encoder_name, value->value))
+        {
+          g_debug ("WfdMediaFactory: Using \"%s\" rate-control for %s",
+                   preferred_nicks[i], encoder_name);
+          return value->value;
+        }
+    }
+
+  g_warning ("WfdMediaFactory: No supported rate-control found for %s, using default",
+             encoder_name);
+  return -1;
+}
+
 GstElement *
 wfd_media_factory_create_video_element (WfdMediaFactory *self, GstBin *bin)
 {
@@ -227,46 +313,28 @@ wfd_media_factory_create_video_element (WfdMediaFactory *self, GstBin *bin)
       break;
 
     case ELEMENT_VAAPIH264:
+      /* vaapih264enc accepts the system-memory frames from the videoconvert
+       * above and uploads them to a VA surface itself, so no vaapipostproc is
+       * needed (it is not available on every VA driver). */
+      encoder = gst_element_factory_make ("vaapih264enc", "wfd-encoder");
+      encoder_elem = encoder;
+      success &= gst_bin_add (bin, encoder);
+      g_object_set (encoder,
+                    "qos", TRUE,
+                    "keyframe-period", 30,
+                    "max-bframes", 0,
+                    "refs", 1,
+                    "num-slices", 1,
+                    "cabac", FALSE,
+                    "dct8x8", FALSE,
+                    "compliance-mode", 0, /* strict */
+                    NULL);
       {
-        GstElement *vaapi_encoder;
-        GstElement *vaapi_convert;
-
-        encoder = gst_bin_new ("wfd-encoder-bin");
-
-        vaapi_convert = gst_element_factory_make ("vaapipostproc", "wfd-vaapi-convert");
-        success &= gst_bin_add (GST_BIN (encoder), vaapi_convert);
-
-        vaapi_encoder = gst_element_factory_make ("vaapih264enc", "wfd-encoder");
-        encoder_elem = vaapi_encoder;
-        success &= gst_bin_add (GST_BIN (encoder), vaapi_encoder);
-
-        g_object_set (vaapi_encoder,
-                      "qos", TRUE,
-                      "rate-control", 2, /* constant bitrate */
-                      "keyframe-period", 30,
-                      "max-bframes", 0,
-                      "refs", 1,
-                      "num-slices", 1,
-                      "cabac", FALSE,
-                      "dct8x8", FALSE,
-                      "compliance-mode", 0, /* strict */
-                      NULL);
-
-        gst_element_link (vaapi_convert, vaapi_encoder);
-
-
-        gst_element_add_pad (encoder,
-                             gst_ghost_pad_new ("sink",
-                                                gst_element_get_static_pad (vaapi_convert,
-                                                                            "sink")));
-        gst_element_add_pad (encoder,
-                             gst_ghost_pad_new ("src",
-                                                gst_element_get_static_pad (vaapi_encoder,
-                                                                            "src")));
-
-        success &= gst_bin_add (bin, encoder);
-        break;
+        gint rate_control = wfd_media_factory_pick_va_rate_control ("vaapih264enc");
+        if (rate_control >= 0)
+          g_object_set (encoder, "rate-control", rate_control, NULL);
       }
+      break;
 
     default:
       g_assert_not_reached ();
