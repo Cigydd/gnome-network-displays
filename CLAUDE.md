@@ -45,6 +45,9 @@ pipeline graphs. See README.md for the (lengthy) P2P/connection debugging guide.
 GNU/GNOME style enforced by uncrustify. Run `scripts/uncrustify.sh` (uses
 `scripts/uncrustify.cfg`) before committing C changes.
 
+### Commit messages
+Commit message language: English (matches the upstream GNOME history).
+
 ## Architecture
 
 ### Three executables, shared core
