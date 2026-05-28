@@ -41,6 +41,95 @@ enum {
 
 static guint signals[NR_SIGNALS];
 
+/* Some VA drivers implement only a subset of the H.264 rate-control modes (it
+ * is common to find hardware that offers CQP only). Setting an unsupported
+ * mode makes the encoder fail to create its VA config once the pipeline
+ * starts, which surfaces as a "not-negotiated" stream error. Probe a throwaway
+ * pipeline to find a mode the driver actually accepts. */
+static gboolean
+cc_media_factory_va_rate_control_works (const gchar *encoder_name,
+                                        gint         rate_control)
+{
+  GstElement *pipeline, *src, *convert, *encoder, *sink;
+  gboolean works = FALSE;
+
+  src = gst_element_factory_make ("videotestsrc", NULL);
+  convert = gst_element_factory_make ("videoconvert", NULL);
+  encoder = gst_element_factory_make (encoder_name, NULL);
+  sink = gst_element_factory_make ("fakesink", NULL);
+
+  if (src == NULL || convert == NULL || encoder == NULL || sink == NULL)
+    {
+      g_clear_object (&src);
+      g_clear_object (&convert);
+      g_clear_object (&encoder);
+      g_clear_object (&sink);
+      return FALSE;
+    }
+
+  g_object_set (src, "num-buffers", 1, NULL);
+  g_object_set (encoder, "rate-control", rate_control, NULL);
+
+  pipeline = gst_pipeline_new (NULL);
+  gst_bin_add_many (GST_BIN (pipeline), src, convert, encoder, sink, NULL);
+
+  if (gst_element_link_many (src, convert, encoder, sink, NULL) &&
+      gst_element_set_state (pipeline, GST_STATE_PAUSED) != GST_STATE_CHANGE_FAILURE)
+    {
+      /* Reaching PAUSED forces the encoder to negotiate caps and create its VA
+       * config; an unsupported rate-control fails here. */
+      GstStateChangeReturn ret = gst_element_get_state (pipeline, NULL, NULL, 3 * GST_SECOND);
+      works = (ret == GST_STATE_CHANGE_SUCCESS || ret == GST_STATE_CHANGE_NO_PREROLL);
+    }
+
+  gst_element_set_state (pipeline, GST_STATE_NULL);
+  gst_object_unref (pipeline);
+
+  return works;
+}
+
+/* Returns the preferred supported "rate-control" enum value for a VA-based
+ * H.264 encoder, preferring constant bitrate for predictable streaming
+ * bandwidth, or -1 to keep the element default if none could be probed. The
+ * mode is resolved by enum nick so it works across the vaapi and va plugins,
+ * whose integer enum values differ. */
+static gint
+cc_media_factory_pick_va_rate_control (const gchar *encoder_name)
+{
+  const gchar *preferred_nicks[] = { "cbr", "vbr", "cqp" };
+  g_autoptr(GstElement) probe = NULL;
+  GParamSpec *pspec;
+
+  probe = gst_element_factory_make (encoder_name, NULL);
+  if (probe == NULL)
+    return -1;
+
+  pspec = g_object_class_find_property (G_OBJECT_GET_CLASS (probe), "rate-control");
+  if (pspec == NULL || !G_IS_PARAM_SPEC_ENUM (pspec))
+    return -1;
+
+  for (guint i = 0; i < G_N_ELEMENTS (preferred_nicks); i++)
+    {
+      GEnumValue *value;
+
+      value = g_enum_get_value_by_nick (G_PARAM_SPEC_ENUM (pspec)->enum_class,
+                                        preferred_nicks[i]);
+      if (value == NULL)
+        continue;
+
+      if (cc_media_factory_va_rate_control_works (encoder_name, value->value))
+        {
+          g_debug ("CcMediaFactory: Using \"%s\" rate-control for %s",
+                   preferred_nicks[i], encoder_name);
+          return value->value;
+        }
+    }
+
+  g_warning ("CcMediaFactory: No supported rate-control found for %s, using default",
+             encoder_name);
+  return -1;
+}
+
 GstBin *
 cc_media_factory_create_video_element (CcMediaFactory *self)
 {
@@ -115,9 +204,11 @@ cc_media_factory_create_video_element (CcMediaFactory *self)
 
     case ELEMENT_VAH264:
       encoder = gst_element_factory_make ("vah264enc", "cc-video-encoder");
-      g_object_set (encoder,
-                    "rate-control", 2,
-                    NULL);
+      {
+        gint rate_control = cc_media_factory_pick_va_rate_control ("vah264enc");
+        if (rate_control >= 0)
+          g_object_set (encoder, "rate-control", rate_control, NULL);
+      }
 
       parser = gst_element_factory_make ("h264parse", "cc-h264parse");
       caps = gst_caps_from_string ("video/x-h264,stream-format=avc,alignment=au,profile=high");
@@ -127,9 +218,13 @@ cc_media_factory_create_video_element (CcMediaFactory *self)
       encoder = gst_element_factory_make ("vaapih264enc", "cc-video-encoder");
       g_object_set (encoder,
                     "prediction-type", 1,
-                    "rate-control", 2,
                     "compliance-mode", 0,
                     NULL);
+      {
+        gint rate_control = cc_media_factory_pick_va_rate_control ("vaapih264enc");
+        if (rate_control >= 0)
+          g_object_set (encoder, "rate-control", rate_control, NULL);
+      }
 
       parser = gst_element_factory_make ("h264parse", "cc-h264parse");
       caps = gst_caps_from_string ("video/x-h264,stream-format=avc,alignment=au,profile=high");
