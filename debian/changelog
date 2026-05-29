@@ -1,3 +1,11 @@
+gnome-network-displays (0.99.0.2) unstable; urgency=medium
+
+  * Add a "disable QoS throttling" option (GSettings key disable-qos plus a
+    Preferences switch) to keep a full-rate Wi-Fi Display stream flowing for
+    receivers whose decoder freezes when the stream is throttled.
+
+ -- Pavel Řezníček <cigydd@gmail.com>  Fri, 29 May 2026 14:20:31 +0200
+
 gnome-network-displays (0.99.0.1) unstable; urgency=medium
 
   * Fix the Wi-Fi Display VAAPI encoder path: drop the unavailable

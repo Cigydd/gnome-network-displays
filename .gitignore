@@ -4,3 +4,10 @@ _build
 builddir
 build
 gschemas.compiled
+
+# Debian packaging build artifacts
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/gnome-network-displays/
