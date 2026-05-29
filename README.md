@@ -12,6 +12,18 @@ To use it, you will need:
  * For audio supporting using AAC one of fdkaacenc, faac or avenc_aac
  * NetworkManager version > 1.15.2
 
+Install
+=======
+
+On Ubuntu 24.04 (noble) you can install this patched downstream build from a
+PPA:
+
+```
+sudo add-apt-repository ppa:cigydd/gnome-network-displays
+sudo apt update
+sudo apt install gnome-network-displays
+```
+
 Build
 =====
 
