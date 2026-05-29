@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: gnome-network-displays master\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-05-27 18:55+0200\n"
+"POT-Creation-Date: 2026-05-29 14:17+0200\n"
 "PO-Revision-Date: 2024-09-10 15:52+0200\n"
 "Last-Translator: Daniel Rusek <mail@asciiwolf.com>\n"
 "Language-Team: Czech <gnome-cs-list@gnome.org>\n"
@@ -18,20 +18,20 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
 "X-Generator: Poedit 3.4.4\n"
 
-#: data/org.gnome.NetworkDisplays.desktop.in:2
-#: data/org.gnome.NetworkDisplays.appdata.xml.in:7 src/app/main.c:68
+#: data/org.gnome.NetworkDisplays.desktop.in:3
+#: data/org.gnome.NetworkDisplays.metainfo.xml.in:7 src/app/main.c:68
 msgid "GNOME Network Displays"
 msgstr "Síťové displeje GNOME"
 
-#: data/org.gnome.NetworkDisplays.appdata.xml.in:8
+#: data/org.gnome.NetworkDisplays.metainfo.xml.in:8
 msgid "Screencasting for GNOME"
 msgstr "Vysílání obrazovky pro GNOME"
 
-#: data/org.gnome.NetworkDisplays.appdata.xml.in:14
+#: data/org.gnome.NetworkDisplays.metainfo.xml.in:14
 msgid "Benjamin Berg, Christian Glombek"
 msgstr ""
 
-#: data/org.gnome.NetworkDisplays.appdata.xml.in:24
+#: data/org.gnome.NetworkDisplays.metainfo.xml.in:24
 msgid ""
 "GNOME Network Displays allows you to cast your desktop to a remote display. "
 "Supports the Miracast and Chromecast protocols."
@@ -120,31 +120,57 @@ msgstr ""
 "Nainstalujte prosím kliknutím níže jeden z následujících zásuvných modulů "
 "GStreamer"
 
-#: src/app/nd-window.c:233
+#: src/app/nd-window.c:242
 msgid "Checking and installing required firewall zones."
 msgstr "Kontrolují se a instalují potřebné zónu firewallu."
 
-#: src/app/nd-window.c:240
+#: src/app/nd-window.c:249
 msgid "Making P2P connection"
 msgstr "Vytváří se spojení P2P"
 
-#: src/app/nd-window.c:247
+#: src/app/nd-window.c:256
 msgid "Establishing connection to sink"
 msgstr "Ustavuje se spojení k cíli"
 
-#: src/app/nd-window.c:254
+#: src/app/nd-window.c:263
 msgid "Starting to stream"
 msgstr "Spouští se vysílání"
 
+#: src/app/nd-window.c:662
+msgid "Wi‑Fi Display"
+msgstr ""
+
+#: src/app/nd-window.c:666
+msgid "Improve receiver compatibility"
+msgstr "Zlepšit kompatibilitu s přijímačem"
+
+#: src/app/nd-window.c:668
+msgid ""
+"Keep sending full-rate video and keyframes instead of throttling when frames "
+"fall behind. Helps receivers whose picture freezes, at the cost of higher "
+"latency on congested links."
+msgstr ""
+"Odesílá video a klíčové snímky v plné snímkové frekvenci namísto jejich "
+"omezování, když se snímky opožďují. Pomáhá přijímačům, jejichž obraz zamrzá, "
+"za cenu vyšší latence na přetížených linkách."
+
 #: src/nd-window.ui:6
+msgid "_Preferences"
+msgstr "_Předvolby"
+
+#: src/nd-window.ui:14
 msgid "Network Displays"
 msgstr "Síťové displeje"
 
-#: src/nd-window.ui:28
+#: src/nd-window.ui:25
+msgid "Main Menu"
+msgstr "Hlavní nabídka"
+
+#: src/nd-window.ui:45
 msgid "No Wi‑Fi P2P Adapter Found"
 msgstr "Nebyl nalezen žádný adaptér Wi-Fi P2P"
 
-#: src/nd-window.ui:29
+#: src/nd-window.ui:46
 msgid ""
 "No usable wireless adapters were found. Please verify that Wi‑Fi is enabled "
 "and Wi‑Fi P2P operations are available in both NetworkManager and "
@@ -154,31 +180,31 @@ msgstr ""
 "je Wi-Fi zapnuté a že operace Wi-Fi P2P uvádí jako dostupné NetworkManager i "
 "wpa_supplicant."
 
-#: src/nd-window.ui:63
+#: src/nd-window.ui:80
 msgid "Available Video Sinks"
 msgstr "Dostupné cíle videa"
 
-#: src/nd-window.ui:137
+#: src/nd-window.ui:154
 msgid "Connecting"
 msgstr "Připojuje se"
 
-#: src/nd-window.ui:160 src/nd-window.ui:231
+#: src/nd-window.ui:177 src/nd-window.ui:248
 msgid "Cancel"
 msgstr "Zrušit"
 
-#: src/nd-window.ui:205
+#: src/nd-window.ui:222
 msgid "Streaming"
 msgstr "Vysílá se"
 
-#: src/nd-window.ui:276
+#: src/nd-window.ui:293
 msgid "Error"
 msgstr "Chyba"
 
-#: src/nd-window.ui:299
+#: src/nd-window.ui:316
 msgid "Return"
 msgstr "Návrat"
 
-#: src/nd-window.ui:308
+#: src/nd-window.ui:325
 msgid ""
 "One of the following codec plugins is required for audio support.\n"
 "Clicking will start the installation process."
@@ -186,7 +212,7 @@ msgstr ""
 "Pro podporu zvuku je vyžadován jeden z následujících zásuvných modulů.\n"
 "Kliknutím spustíte instalaci."
 
-#: src/nd-window.ui:314
+#: src/nd-window.ui:331
 msgid ""
 "One of the following codec plugins is required for video support.\n"
 "Clicking will start the installation process."
@@ -194,7 +220,7 @@ msgstr ""
 "Pro podporu videa je vyžadován jeden z následujících zásuvných modulů.\n"
 "Kliknutím spustíte instalaci."
 
-#: src/nd-window.ui:327
+#: src/nd-window.ui:344
 msgid ""
 "A required firewall zone is not available and could not be installed. Please "
 "try again and enter the password when prompted or contact a system "

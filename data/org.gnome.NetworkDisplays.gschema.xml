@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.NetworkDisplays" path="/org/gnome/NetworkDisplays/">
+    <key name="disable-qos" type="b">
+      <default>false</default>
+      <summary>Disable Wi-Fi Display QoS throttling</summary>
+      <description>
+        By default the Wi-Fi Display video encoder is throttled (frames are
+        dropped) when encoded frames fall behind, in order to keep latency low.
+        Some receivers have weak decoders that stall and never recover once the
+        stream has been throttled, leaving the picture frozen. Enabling this
+        option disables that throttling, so a full-rate stream with regular
+        keyframes keeps flowing and such receivers can resync — at the cost of
+        higher latency on congested links.
+      </description>
+    </key>
+  </schema>
+</schemalist>

@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
+  <menu id="primary_menu">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">win.preferences</attribute>
+      </item>
+    </section>
+  </menu>
   <template class="NdWindow" parent="AdwApplicationWindow">
     <property name="default-width">480</property>
     <property name="default-height">360</property>
@@ -8,7 +16,16 @@
     <property name="content">
       <object class="AdwToolbarView">
         <child type="top">
-          <object class="AdwHeaderBar"/>
+          <object class="AdwHeaderBar">
+            <child type="end">
+              <object class="GtkMenuButton">
+                <property name="icon-name">open-menu-symbolic</property>
+                <property name="menu-model">primary_menu</property>
+                <property name="primary">True</property>
+                <property name="tooltip-text" translatable="yes">Main Menu</property>
+              </object>
+            </child>
+          </object>
         </child>
         <property name="content">
           <object class="GtkStack" id="step_stack">

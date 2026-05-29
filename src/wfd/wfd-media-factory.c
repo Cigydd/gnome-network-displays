@@ -1,4 +1,5 @@
 #include "gnome-network-displays-config.h"
+#include <gio/gio.h>
 #include "wfd-media-factory.h"
 #include "wfd-media.h"
 
@@ -31,6 +32,7 @@ G_DEFINE_TYPE (WfdMediaFactory, wfd_media_factory, GST_TYPE_RTSP_MEDIA_FACTORY)
 typedef struct
 {
   GstSegment *segment;
+  gboolean    disable_qos;
 } QOSData;
 
 enum {
@@ -47,6 +49,12 @@ encoding_perf_handoff_cb (GstElement *elem, GstBuffer *buf, gpointer user_data)
   g_autoptr(GstClock) clock = NULL;
   QOSData *qos_data = user_data;
   GstClockTime now;
+
+  /* When QoS is disabled (the "disable-qos" setting), never throttle the
+   * encoder: keep sending full-rate frames and periodic keyframes so weak sink
+   * decoders can resync instead of freezing on a stale frame. */
+  if (qos_data->disable_qos)
+    return;
 
   clock = gst_element_get_clock (elem);
   if (!clock)
@@ -83,6 +91,26 @@ encoding_perf_handoff_cb (GstElement *elem, GstBuffer *buf, gpointer user_data)
           gst_element_send_event (elem, qos_event);
         }
     }
+}
+
+/* Read the "disable-qos" setting. Safe if the schema is not installed (returns
+ * FALSE = QoS enabled, the default behaviour). */
+static gboolean
+wfd_media_factory_qos_disabled (void)
+{
+  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+  g_autoptr(GSettingsSchema) schema = NULL;
+  g_autoptr(GSettings) settings = NULL;
+
+  if (source == NULL)
+    return FALSE;
+
+  schema = g_settings_schema_source_lookup (source, "org.gnome.NetworkDisplays", TRUE);
+  if (schema == NULL || !g_settings_schema_has_key (schema, "disable-qos"))
+    return FALSE;
+
+  settings = g_settings_new ("org.gnome.NetworkDisplays");
+  return g_settings_get_boolean (settings, "disable-qos");
 }
 
 GstPadProbeReturn
@@ -224,6 +252,7 @@ wfd_media_factory_create_video_element (WfdMediaFactory *self, GstBin *bin)
   GstElement *queue_mpegmux_video;
 
   gboolean success = TRUE;
+  gboolean disable_qos = wfd_media_factory_qos_disabled ();
 
   /* Test input, will be replaced by real source */
   g_signal_emit (self, signals[SIGNAL_CREATE_SOURCE], 0, &source);
@@ -320,7 +349,7 @@ wfd_media_factory_create_video_element (WfdMediaFactory *self, GstBin *bin)
       encoder_elem = encoder;
       success &= gst_bin_add (bin, encoder);
       g_object_set (encoder,
-                    "qos", TRUE,
+                    "qos", !disable_qos,
                     "keyframe-period", 30,
                     "max-bframes", 0,
                     "refs", 1,
@@ -344,6 +373,7 @@ wfd_media_factory_create_video_element (WfdMediaFactory *self, GstBin *bin)
   encoding_perf = gst_element_factory_make ("identity", "wfd-measure-encoder-realtime");
   success &= gst_bin_add (bin, encoding_perf);
   qos_data = g_new0 (QOSData, 1);
+  qos_data->disable_qos = disable_qos;
   g_object_set_data_full (G_OBJECT (encoding_perf), "wfd-qos-data", qos_data, (GDestroyNotify) free_qos_data);
   g_signal_connect (encoding_perf, "handoff", G_CALLBACK (encoding_perf_handoff_cb), qos_data);
   encoding_perf_sink = gst_element_get_static_pad (encoding_perf, "sink");

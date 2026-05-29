@@ -36,6 +36,11 @@ if build_app
   endif
 endif
 
+install_data(
+  'org.gnome.NetworkDisplays.gschema.xml',
+  install_dir: join_paths(get_option('datadir'), 'glib-2.0', 'schemas')
+)
+
 if enable_firewalld_zone
   install_data(
     'P2P-WiFi-Display.xml',

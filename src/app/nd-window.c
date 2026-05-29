@@ -16,6 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <adwaita.h>
 #include <glib/gi18n.h>
 #include <gst/base/base.h>
 #include <gst/gst.h>
@@ -53,6 +54,8 @@ struct _NdWindow
   gboolean               use_x11;
 
   NdPulseaudio          *pulse;
+
+  GSettings             *settings;
 
   GCancellable          *cancellable;
 
@@ -534,6 +537,7 @@ gnome_nd_window_finalize (GObject *obj)
     nd_pulseaudio_unload (self->pulse);
   g_clear_object (&self->portal);
   g_clear_object (&self->pulse);
+  g_clear_object (&self->settings);
 
   g_clear_object (&self->stream_sink);
 
@@ -639,6 +643,45 @@ on_meta_provider_has_provider_changed_cb (NdWindow *self, GParamSpec *pspec, NdM
 }
 
 static void
+nd_window_preferences_activated (GSimpleAction *action,
+                                 GVariant      *parameter,
+                                 gpointer       user_data)
+{
+  NdWindow *self = ND_WINDOW (user_data);
+  AdwPreferencesWindow *prefs;
+  AdwPreferencesPage *page;
+  AdwPreferencesGroup *group;
+  GtkWidget *row;
+
+  prefs = ADW_PREFERENCES_WINDOW (adw_preferences_window_new ());
+  gtk_window_set_transient_for (GTK_WINDOW (prefs), GTK_WINDOW (self));
+  gtk_window_set_modal (GTK_WINDOW (prefs), TRUE);
+
+  page = ADW_PREFERENCES_PAGE (adw_preferences_page_new ());
+  group = ADW_PREFERENCES_GROUP (adw_preferences_group_new ());
+  adw_preferences_group_set_title (group, _("Wi‑Fi Display"));
+
+  row = adw_switch_row_new ();
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row),
+                                 _("Improve receiver compatibility"));
+  adw_action_row_set_subtitle (ADW_ACTION_ROW (row),
+                               _("Keep sending full-rate video and keyframes instead of "
+                                 "throttling when frames fall behind. Helps receivers whose "
+                                 "picture freezes, at the cost of higher latency on congested links."));
+
+  if (self->settings)
+    g_settings_bind (self->settings, "disable-qos", row, "active", G_SETTINGS_BIND_DEFAULT);
+  else
+    gtk_widget_set_sensitive (row, FALSE);
+
+  adw_preferences_group_add (group, row);
+  adw_preferences_page_add (page, group);
+  adw_preferences_window_add (prefs, page);
+
+  gtk_window_present (GTK_WINDOW (prefs));
+}
+
+static void
 gnome_nd_window_init (NdWindow *self)
 {
   g_autoptr(GError) error = NULL;
@@ -741,4 +784,24 @@ gnome_nd_window_init (NdWindow *self)
                                self);
 
   self->sink_property_bindings = g_ptr_array_new_full (0, (GDestroyNotify) g_binding_unbind);
+
+  /* GSettings. Guard against the schema being absent (e.g. uninstalled runs)
+   * so g_settings_new() doesn't abort. */
+  {
+    GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+    g_autoptr(GSettingsSchema) schema = NULL;
+
+    if (source)
+      schema = g_settings_schema_source_lookup (source, "org.gnome.NetworkDisplays", TRUE);
+    if (schema)
+      self->settings = g_settings_new ("org.gnome.NetworkDisplays");
+    else
+      g_warning ("NdWindow: GSettings schema \"org.gnome.NetworkDisplays\" not found; preferences will be read-only.");
+  }
+
+  {
+    g_autoptr(GSimpleAction) prefs_action = g_simple_action_new ("preferences", NULL);
+    g_signal_connect (prefs_action, "activate", G_CALLBACK (nd_window_preferences_activated), self);
+    g_action_map_add_action (G_ACTION_MAP (self), G_ACTION (prefs_action));
+  }
 }
