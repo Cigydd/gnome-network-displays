@@ -1,3 +1,14 @@
+gnome-network-displays (0.99.0.2-1) noble; urgency=medium
+
+  * Initial PPA release of this downstream fork of upstream master, carrying:
+    - libadwaita requirement lowered to 1.5.0 (builds on this release)
+    - Chromecast: probe a supported VAAPI rate-control instead of hardcoding CBR
+    - PulseAudio: lock the threaded mainloop; guard NULL pulse on teardown
+    - Wi-Fi Display: drop the unavailable vaapipostproc and probe rate-control
+    - A "disable QoS throttling" option (GSettings + Preferences switch)
+
+ -- Pavel Řezníček <pavel.reznicek@evangnet.cz>  Fri, 29 May 2026 15:28:23 +0200
+
 gnome-network-displays (0.99.0.2) unstable; urgency=medium
 
   * Add a "disable QoS throttling" option (GSettings key disable-qos plus a

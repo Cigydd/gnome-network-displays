@@ -1,7 +1,7 @@
 Source: gnome-network-displays
 Section: gnome
 Priority: optional
-Maintainer: Pavel Řezníček <cigydd@gmail.com>
+Maintainer: Pavel Řezníček <pavel.reznicek@evangnet.cz>
 Build-Depends: debhelper-compat (= 13),
                meson (>= 0.59.0),
                ninja-build,
